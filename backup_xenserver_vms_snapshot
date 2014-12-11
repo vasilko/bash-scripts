@@ -1,0 +1,117 @@
+#!/bin/bash
+#
+#this basic script is created to take xenserver guest backup using snapshots
+#it will first of all create a snapshot for a specific vm, convert that snapshot to template, take backup of template & delete it
+#ths script is tested only on standalone server NOT ON SERVER POOL
+
+
+PATH=/opt/xensource/bin:/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin:/root/bin
+export PATH
+mount vms-backup.example.sk:/nfs/backup /mnt/nfs
+BACKDATE=`date +%Y-%m-%d`
+ADMIN=admin@example.com
+BACKDIR=/mnt/nfs/$HOSTNAME/$BACKDATE
+tmp=/mnt/nfs/$HOSTNAME/xen_back1
+hostuuid=`xe host-list | grep uuid | awk -F': ' '{print$2 }'`
+
+#create backup dir
+if [ -d $BACKDIR ]
+        then
+                echo -e "$BACKDIR Exists \n" 
+        else
+                echo -e "$BACKDIR does not Exists, Creating \n"
+                mkdir -p $BACKDIR
+fi
+
+log=$BACKDIR/xen_back.mail
+echo -e "subject: backup done on $HOSTNAME \n" > $log
+date >> $log
+
+#backup xenserver itself
+echo -e "\nBackup Xenserver at " >> $log
+date >> $log
+xe host-backup file-name=$BACKDIR/host-backup.bak host=$hostuuid
+
+if [ $? -eq 0 ]
+then
+echo -e "backup xenserver was sucessfully " >> $log
+else
+echo -e "backup xenserver failed" >> $log
+fi
+date >> $log
+
+#backup metadata - pool-database
+xe pool-dump-database file-name=$BACKDIR/pool-dump-database.bak
+if [ $? -eq 0 ]
+then
+echo -e "pool-dump-database was sucessfully " >> $log
+else
+echo -e "pool-dump-database failed " >> $log
+fi
+date >> $log
+
+#generate list of RUNNING VM ONLY
+echo "Generating List of Running VMs"
+xe vm-list power-state=running|grep name-label| grep -v "Control domain on host:"  | sed 's/     name-label ( RW): //g' > $tmp
+echo -e "\n List of the running VMs on host" >> $log
+cat $tmp  >> $log
+
+if [ $? -eq 0 ]
+then
+echo -e "vm list sucessfully generated \n" >> $log
+else
+echo -e "vm list failed \n" >> $log
+fi
+
+
+vms=( centos-6-5 centos-6-6 centos-7-0 )
+
+echo -e "Vms going to backup: "${vms[@]}" \n" >> log
+
+for VM in "${vms[@]}"
+do
+echo -e " \n " >> $log
+echo $VM >> $log
+        #create snapshot
+        echo "Creating Snapshot for $VM" >> $log
+        SNAPSHOT=`xe vm-snapshot vm="$VM"  new-name-label="$VM"-$BACKDATE new-name-description="temporary snapshot" `
+                if [ $? -eq 0 ]
+                                then
+                                                echo -e "Snapshot for $VM Sucessfully created " >> $log
+                                else
+                                                echo -e "Snapshot for $VM FAILED " >>$log
+                fi
+#set snapshot as template
+        echo "Setting snapshot $SNAPSHOT as Template for $VM backup \n" >>$log
+        xe template-param-set is-a-template=false uuid=$SNAPSHOT
+                if [ $? -eq 0 ]
+                                then
+                                                echo -e "Setting snapshot $SNAPSHOT as Template for $VM backup was SUCESSFULL " >>$log
+                                else
+                                                echo -e "Setting snapshot $SNAPSHOT as Template for $VM backup was FAILED " >>$log
+                fi
+        #backup from snapshot
+        echo "Backing $SNAPSHOT for $VM"
+        date >> $log
+        echo "Export UUID=$SNAPSHOT" >>$log
+        xe vm-export vm=$SNAPSHOT compress=false filename= |  pigz -6 > $BACKDIR/"$VM".gz
+        date >> $log
+        uninstall snapshot template
+        echo "Removing $SNAPSHOT for $VM"
+        echo "Remove UUID=$SNAPSHOT">>$log
+        xe vm-uninstall uuid=$SNAPSHOT force=true
+                if [ $? -eq 0 ]
+                                then
+                                                echo -e "Uninstall of temporary snapshot $SNAPSHOT for $VM was SUCESSFULL " >>$log
+                                else
+                                                echo -e "Uninstall of temporary snapshot $SNAPSHOT for $VM was FAILED " >>$log
+                fi
+
+
+echo $VM
+done
+date >> $log
+cat $log | sendmail $ADMIN
+rm -rf cat $tmp
+umount /mnt/nfs
+exit 0
