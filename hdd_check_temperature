@@ -1,0 +1,39 @@
+#!/bin/bash
+#written by vasil
+HDDS="/dev/sda /dev/sdb /dev/sdc /dev/sdd /dev/sde /dev/sdf"
+HDT=/usr/sbin/hddtemp
+mail="/root/hddtemp/messagebody.txt"
+LOG=/root/hddtemp/hddtemp.log
+ALERT_LEVEL=28
+date >> $LOG
+date > $mail
+sent=/root/hddtemp/send_mail_script.sh
+let "m = 0"
+
+for disk in $HDDS
+do
+                        HDTEMP=$($HDT $disk | awk -F ":" '{ print $3}' | awk -F "°"  '{print $1}')
+                        if [ $HDTEMP -ge $ALERT_LEVEL ];
+                        then
+                                echo "temperature of $disk is higher then limit $ALERT_LEVEL celsius" >> $LOG
+                                echo "temperature of $disk is higher then limit $ALERT_LEVEL celsius" >> $mail
+                                $HDT $disk >> $LOG
+                                $HDT $disk >> $mail
+                                echo " " >> $LOG
+                                echo " " >> $mail
+                                let "m += 1"
+                        else
+                                echo "temperature of $disk is normal: $HDTEMP celsius" >> $LOG
+                        fi
+done
+
+if [ "$m" -ne "0" ];
+then
+        $sent
+else
+        echo
+fi
+
+echo "end of script...." >> $LOG
+echo " " >> $LOG
+exit 0
