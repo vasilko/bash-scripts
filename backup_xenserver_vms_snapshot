@@ -1,5 +1,4 @@
 #!/bin/bash
-#
 #this basic script is created to take xenserver guest backup using snapshots
 #it will first of all create a snapshot for a specific vm, convert that snapshot to template, take backup of template & delete it
 #ths script is tested only on standalone server NOT ON SERVER POOL
