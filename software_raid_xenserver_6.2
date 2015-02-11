@@ -1,0 +1,69 @@
+#after classical install xenserver on disk /dev/sda, do:
+
+cat /proc/mdstat
+
+mdadm -E /dev/sdb
+mdadm -E /dev/sda
+mdadm -E /dev/sdb1
+mdadm -E /dev/sdb2
+mdadm -E /dev/sdb3
+mdadm -E /dev/sda1
+mdadm -E /dev/sda2
+mdadm -E /dev/sda3
+mdadm --zero-superblock /dev/sdb
+mdadm --zero-superblock /dev/sdb1
+mdadm --zero-superblock /dev/sdb2
+mdadm --zero-superblock /dev/sdb3
+mdadm --zero-superblock /dev/sda
+mdadm --zero-superblock /dev/sda1
+mdadm --zero-superblock /dev/sda2
+mdadm --zero-superblock /dev/sda3
+
+sgdisk -p /dev/sda
+
+
+
+
+sgdisk --new=3:16779264:625142414 /dev/sda
+sgdisk --typecode=3:fd00
+
+sgdisk -R/dev/sdb /dev/sda  # Replicate partion table from /dev/sda to /dev/sdb with unique identifier
+sgdisk --typecode=1:fd00 /dev/sdb
+sgdisk --typecode=2:fd00 /dev/sdb
+sgdisk --typecode=3:fd00 /dev/sdb
+#reboot
+mdadm --create /dev/md0 --level=1 --raid-devices=2 /dev/sdb1 missing # Create md0 (root)
+mdadm --create /dev/md1 --level=1 --raid-devices=2 /dev/sdb2 missing # Create md0 (swap)
+mdadm --create /dev/md2 --level=1 --raid-devices=2 /dev/sdb3 missing # Create md0 (storage)
+mkfs.ext3 /dev/md0 # Create root FS
+mount /dev/md0 /mnt # Mount root FS
+cp -vxpR / /mnt # Replicate root files
+sed -i 's/LABEL=[a-zA-Z\-]*/\/dev\/md0/' /mnt/etc/fstab # Update fstab for new RAID device
+mkdir /mnt/root/initrd-raid && cd /mnt/root/initrd-raid
+mkinitrd -v --fstab=/mnt/etc/fstab /mnt/root/initrd-raid/initrd-`uname -r`-raid.img `uname -r`
+zcat initrd-`uname -r`-raid.img | cpio -i
+sed -i 's/raidautorun \/dev\/md0/raidautorun \/dev\/md0\nraidautorun \/dev\/md1\nraidautorun \/dev\/md2/' init
+rm initrd-`uname -r`-raid.img
+find . -print | cpio -o -Hnewc | gzip -c > /mnt/boot/initrd-`uname -r`-raid.img
+rm -f /mnt/boot/initrd-2.6-xen.img
+ln -s initrd-`uname -r`-raid.img /mnt/boot/initrd-2.6-xen.img
+sed -i 's/LABEL=[a-zA-Z\-]*/\/dev\/md0/' /mnt/boot/extlinux.conf
+cat /mnt/usr/share/syslinux/gptmbr.bin > /dev/sdb
+cd /mnt && extlinux  --raid -i boot/
+sgdisk /dev/sda --attributes=1:set:2
+sgdisk /dev/sdb --attributes=1:set:2
+cd && umount /dev/md0
+sync
+reboot
+
+
+
+sgdisk -R/dev/sda /dev/sdb  # Replicate partion table from /dev/sdb to /dev/sda with unique identifier
+#watch -n 1 cat /proc/mdstat
+mdadm -a /dev/md0 /dev/sda1
+mdadm -a /dev/md1 /dev/sda2
+mdadm -a /dev/md2 /dev/sda3  # If this command gives error, you need to forget/destroy an active SR first
+mdadm --detail --scan >> /etc/mdadm.conf
+xe sr-create content-type=user device-config:device=/dev/md2 host-uuid=<host_uuid> name-label="Local Storage" shared=false type=lvm
+
+
