@@ -1,0 +1,22 @@
+#!/bin/bash
+#written by vasil
+#
+#if there is syntax error in sendmail, must edit /etc/ssmtp/ssmtp.conf:
+# The full hostname
+#hostname=xenserver-tower.example.com
+
+#
+# Server mail script to send mail after hdd temperature exceed specific treshold writen by vasil in 2013
+#For Use with CentOS/Redhat Linux 5 or Higher
+#
+#email send script
+#
+#
+# subject of email
+SUBJECT="*WARNING* - temperature of hdd is big"
+# destination
+EMAIL=vasilko@example.com
+# Email body
+EMAILMESSAGE=/root/hddtemp/messagebody.txt
+# send message using /bin/mail
+/usr/bin/mail -s "$SUBJECT" $EMAIL < $EMAILMESSAGE
