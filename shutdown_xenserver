@@ -1,0 +1,64 @@
+#!/bin/sh
+/root/./first_mail.sh
+log=/var/log/shutdown.txt
+echo " " > $log
+date >> $log
+echo " " >> $log
+echo "listing vms in running-state" >> $log
+echo " " >> $log
+xe vm-list power-state=running >> $log
+#Routine  to shutdown all VMs running on a host
+echo "Shutting down vms" | wall
+echo "Shutting down vms" >> $log
+echo " " >> $log
+
+for x in 1 2
+do
+a=`xe vm-list power-state=running | grep uuid | awk -F': ' '{print$2 }'`
+b=`xe vm-list power-state=running | grep Control -B1 | grep uuid | awk -F': ' '{print$2 }'`
+c=`echo ${a/$b/}`
+        for i in $c
+                do
+                date >> $log
+                echo "shutting down machine with uuid $i" >> $log
+                xe vm-shutdown force=false uuid=$i &
+                sleep 10
+                echo " " >> $log
+        done
+echo "pass of $x cycle to shutdown vms" >> $log
+echo " " >> $log
+done
+
+echo "pass 2 cycles without force parameter, starting with force parameter" >> $log
+date >> $log
+sleep 15
+a=`xe vm-list power-state=running | grep uuid | awk -F': ' '{print$2 }'`
+b=`xe vm-list power-state=running | grep Control -B1 | grep uuid | awk -F': ' '{print$2 }'`
+c=`echo ${a/$b/}`
+
+
+for i in $c
+                do
+                echo " " >> $log
+                date >> $log
+                echo "doing force shutdown machines with uuid $i" >> $log
+                xe vm-shutdown force=true uuid=$i
+                sleep 5
+                echo " " >> $log
+        done
+echo " " >> $log
+
+#prepare shutdown of xenserver
+hostuuid=`xe host-list | grep uuid | awk -F': ' '{print$2 }'`
+echo " "
+echo "shutdown servera will begin  in 20 seconds" >> $log
+sleep 15
+xe host-disable uuid=$hostuuid
+sleep 5
+echo " "
+date >> $log
+echo "shutdown began" | wall
+echo "script is ending" >> $log
+/root/./last_mail.sh
+xe host-shutdown host=$hostuuid >> $log
+exit 0
